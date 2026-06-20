@@ -1,0 +1,70 @@
+name: Test code-embedder section embed scenario
+on:
+  workflow_dispatch:
+
+jobs:
+  test-section-embed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Remove all markdown files with embed tags and set up test files
+        run: |
+          # Write a helper script to find and remove markdown files with embed tags.
+          # The action's Python script uses regex ^```.*?: to detect embed tags.
+          # We use --skip-worktree so git does not see these deletions as changes.
+          cat > /tmp/remove_embed_md.py << 'PYEOF'
+          import glob, os, re, subprocess
+          pattern = re.compile(r'^`{3}[^\n]*:', re.MULTILINE)
+          for f in glob.glob('**/*.md', recursive=True):
+              try:
+                  content = open(f, encoding='utf-8').read()
+                  if pattern.search(content):
+                      subprocess.run(
+                          ['git', 'update-index', '--skip-worktree', f],
+                          capture_output=True
+                      )
+                      os.remove(f)
+                      print(f'Removed: {f}')
+              except Exception as e:
+                  print(f'Error processing {f}: {e}')
+          PYEOF
+          python3 /tmp/remove_embed_md.py
+
+          # Create a Python script with a named section
+          printf 'print("Hello, world!")\n\n# code_embedder:A start\nprint("Embedding successful")\n# code_embedder:A end\n' > section_script.py
+
+          # Create a README with a section embed tag
+          printf '# Test README\n\nThis is a readme.\n\n```python:section_script.py:s:A\n```\n' > SECTION_README.md
+
+          echo "Test files created:"
+          cat section_script.py
+          cat SECTION_README.md
+
+      - name: Run code embedder
+        id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: dummy-token
+          GITHUB_REPOSITORY: test-owner/test-repo
+          GITHUB_HEAD_REF: act-harness
+          GITHUB_REF_NAME: act-harness
+          GIT_TERMINAL_PROMPT: "0"
+
+      - name: Verify only the section was embedded into README
+        run: |
+          echo "Contents of SECTION_README.md after action:"
+          cat SECTION_README.md
+          # The section content should be embedded
+          if ! grep -q 'print("Embedding successful")' SECTION_README.md; then
+            echo "FAIL: Expected section content not found in SECTION_README.md"
+            exit 1
+          fi
+          # The content outside the section should NOT be embedded
+          if grep -q 'print("Hello, world!")' SECTION_README.md; then
+            echo "FAIL: Content outside section should not be embedded"
+            exit 1
+          fi
+          echo "PASS: Only the marked section was embedded into README"

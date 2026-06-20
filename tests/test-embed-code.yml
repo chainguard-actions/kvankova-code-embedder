@@ -1,0 +1,64 @@
+name: Test code-embedder embed code scenario
+on:
+  workflow_dispatch:
+
+jobs:
+  test-embed-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Remove all markdown files with embed tags and set up test files
+        run: |
+          # Write a helper script to find and remove markdown files with embed tags.
+          # The action's Python script uses regex ^```.*?: to detect embed tags.
+          # We use --skip-worktree so git does not see these deletions as changes.
+          cat > /tmp/remove_embed_md.py << 'PYEOF'
+          import glob, os, re, subprocess
+          pattern = re.compile(r'^`{3}[^\n]*:', re.MULTILINE)
+          for f in glob.glob('**/*.md', recursive=True):
+              try:
+                  content = open(f, encoding='utf-8').read()
+                  if pattern.search(content):
+                      subprocess.run(
+                          ['git', 'update-index', '--skip-worktree', f],
+                          capture_output=True
+                      )
+                      os.remove(f)
+                      print(f'Removed: {f}')
+              except Exception as e:
+                  print(f'Error processing {f}: {e}')
+          PYEOF
+          python3 /tmp/remove_embed_md.py
+
+          # Create the Python script to embed
+          printf 'print("Embedding successful")\n' > hello_embed.py
+
+          # Create a README with an embed tag referencing the Python script
+          printf '# Test README\n\nThis is a readme.\n\n```python:hello_embed.py\n```\n' > EMBED_README.md
+
+          echo "Test files created:"
+          cat hello_embed.py
+          cat EMBED_README.md
+
+      - name: Run code embedder
+        id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: dummy-token
+          GITHUB_REPOSITORY: test-owner/test-repo
+          GITHUB_HEAD_REF: act-harness
+          GITHUB_REF_NAME: act-harness
+          GIT_TERMINAL_PROMPT: "0"
+
+      - name: Verify code was embedded into README
+        run: |
+          echo "Contents of EMBED_README.md after action:"
+          cat EMBED_README.md
+          if ! grep -q 'print("Embedding successful")' EMBED_README.md; then
+            echo "FAIL: Expected embedded code not found in EMBED_README.md"
+            exit 1
+          fi
+          echo "PASS: Code was successfully embedded into README"

@@ -1,0 +1,57 @@
+name: Test code-embedder no changes scenario
+on:
+  workflow_dispatch:
+
+jobs:
+  test-no-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Remove all markdown files that contain embed tags
+        run: |
+          # Write a helper script to find and remove markdown files with embed tags.
+          # The action's Python script uses regex ^```.*?: to detect embed tags.
+          # We use --skip-worktree so git does not see these deletions as changes.
+          cat > /tmp/remove_embed_md.py << 'PYEOF'
+          import glob, os, re, subprocess
+          # Match lines starting with ``` followed by any chars and a colon
+          pattern = re.compile(r'^`{3}[^\n]*:', re.MULTILINE)
+          for f in glob.glob('**/*.md', recursive=True):
+              try:
+                  content = open(f, encoding='utf-8').read()
+                  if pattern.search(content):
+                      result = subprocess.run(
+                          ['git', 'update-index', '--skip-worktree', f],
+                          capture_output=True
+                      )
+                      os.remove(f)
+                      print(f'Removed: {f}')
+              except Exception as e:
+                  print(f'Error processing {f}: {e}')
+          PYEOF
+          python3 /tmp/remove_embed_md.py
+          echo "Remaining markdown files:"
+          find . -name "*.md" | head -20
+
+      - name: Run code embedder (no markdown files with embed tags)
+        id: action
+        uses: .
+        env:
+          GITHUB_TOKEN: dummy-token
+          GITHUB_REPOSITORY: test-owner/test-repo
+          GITHUB_HEAD_REF: act-harness
+          GITHUB_REF_NAME: act-harness
+          GIT_TERMINAL_PROMPT: "0"
+
+      - name: Verify action succeeded with no changes
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "action outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: Expected action to succeed but got outcome '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: Action completed successfully with no code-embedder tags in markdown files"
