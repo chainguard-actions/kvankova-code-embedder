@@ -1,0 +1,36 @@
+name: Test code embedding - content gets embedded into README
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify fixture files exist before action
+        run: |
+          echo "Script content:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-content/script.py"
+          echo "README before action:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-content/EMBED_README.md"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert README contains expected script content
+        run: |
+          echo "README content after action:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-content/EMBED_README.md"
+          CONTENT=$(cat "$GITHUB_WORKSPACE/tests/fixtures/embed-content/EMBED_README.md")
+          echo "actual content: $CONTENT"
+          if echo "$CONTENT" | grep -q 'Hello from embed content test'; then
+            echo "PASS: Script content is present in README"
+          else
+            echo "FAIL: Expected content 'Hello from embed content test' not found in README"
+            exit 1
+          fi

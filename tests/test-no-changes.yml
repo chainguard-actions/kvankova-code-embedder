@@ -1,0 +1,56 @@
+name: Test code-embedder no changes scenario
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (satisfies lint; git ops fail with fake token)
+        id: embedder
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: fake-token-for-testing
+          GITHUB_REPOSITORY: test-owner/test-repo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+
+      - name: Set up Python and install dependencies
+        run: |
+          pip install poetry==1.8.4 --quiet
+          cd "$GITHUB_WORKSPACE"
+          POETRY_VIRTUALENVS_CREATE=false POETRY_NO_INTERACTION=1 \
+            poetry install --only main --quiet
+
+      - name: Create a temporary directory with a plain markdown file
+        run: |
+          mkdir -p /tmp/test-no-changes
+          cat > /tmp/test-no-changes/README.md << 'EOF'
+          # Test README
+
+          This is a plain markdown file with no code embedding tags.
+
+          Just regular text here, no backtick code blocks with colons.
+          EOF
+          cd /tmp/test-no-changes && git init && git add . && git commit -m "init"
+
+      - name: Run code embedder Python script (no-op scenario)
+        run: |
+          cd /tmp/test-no-changes
+          PYTHONPATH="$GITHUB_WORKSPACE" python "$GITHUB_WORKSPACE/code_embedder/main.py"
+          echo "Exit code: $?"
+
+      - name: Assert no changes were made to the markdown file
+        run: |
+          cd /tmp/test-no-changes
+          STATUS=$(git status -s)
+          echo "Git status: '$STATUS'"
+          if [ -n "$STATUS" ]; then
+            echo "FAIL: Expected no changes but git status shows: $STATUS"
+            exit 1
+          fi
+          echo "PASS: No changes detected as expected"

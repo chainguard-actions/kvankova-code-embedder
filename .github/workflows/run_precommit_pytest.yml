@@ -1,0 +1,47 @@
+name: pre-commit-pytest
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
+
+      - name: Set up Python
+        uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
+        with:
+          python-version: '3.11'
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@a5643c67b5fcc9ac5eddb395c7f61b1b66d86034 # v2
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
+        name: Define a cache for the virtual environment based on the dependencies lock file
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}
+
+      - name: Install project dependencies
+        run: poetry install --with dev
+
+      - name: Run pre-commit hooks
+        run: |
+          poetry run pre-commit install
+          poetry run pre-commit run --all-files
+
+      - name: Run pytest
+        run: poetry run pytest

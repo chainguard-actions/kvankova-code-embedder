@@ -1,0 +1,38 @@
+name: Test already-embedded content - no changes needed
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify fixture files exist before action
+        run: |
+          echo "Checking fixture files..."
+          echo "hello.py content:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/hello.py"
+          echo "EMBED_README.md content:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/EMBED_README.md"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert README content still contains embedded code
+        run: |
+          echo "README content after action:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/EMBED_README.md"
+          CONTENT=$(cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/EMBED_README.md")
+          echo "actual content: $CONTENT"
+          if echo "$CONTENT" | grep -q 'Hello from code embedder'; then
+            echo "PASS: Embedded content is present in README"
+          else
+            echo "FAIL: Expected embedded content not found in README"
+            echo "Expected to find: 'Hello from code embedder'"
+            exit 1
+          fi

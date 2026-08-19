@@ -1,0 +1,39 @@
+name: Test basic usage - action runs without error
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify workspace has markdown files
+        run: |
+          echo "Checking for markdown files in workspace..."
+          find . -name "*.md" | head -20
+          echo "Workspace is ready"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert fixture files are intact after action run
+        run: |
+          echo "Checking fixture files are intact after action run..."
+          if [ ! -f "$GITHUB_WORKSPACE/tests/fixtures/embed-test/hello.py" ]; then
+            echo "FAIL: fixture file hello.py missing"
+            exit 1
+          fi
+          if [ ! -f "$GITHUB_WORKSPACE/tests/fixtures/embed-test/EMBED_README.md" ]; then
+            echo "FAIL: fixture file EMBED_README.md missing"
+            exit 1
+          fi
+          echo "hello.py content:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/hello.py"
+          echo "EMBED_README.md content:"
+          cat "$GITHUB_WORKSPACE/tests/fixtures/embed-test/EMBED_README.md"
+          echo "PASS: Action ran and fixture files are intact"

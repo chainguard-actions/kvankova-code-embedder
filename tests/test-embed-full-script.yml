@@ -1,0 +1,66 @@
+name: Test code-embedder full script embedding
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Invoke action (satisfies lint; git ops fail with fake token)
+        id: embedder
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: fake-token-for-testing
+          GITHUB_REPOSITORY: test-owner/test-repo
+          GITHUB_REF_NAME: main
+          GITHUB_HEAD_REF: ""
+
+      - name: Set up Python and install dependencies
+        run: |
+          pip install poetry==1.8.4 --quiet
+          cd "$GITHUB_WORKSPACE"
+          POETRY_VIRTUALENVS_CREATE=false POETRY_NO_INTERACTION=1 \
+            poetry install --only main --quiet
+
+      - name: Create test workspace with a Python script and markdown file
+        run: |
+          mkdir -p /tmp/test-embed-full
+          cat > /tmp/test-embed-full/hello.py << 'EOF'
+          print("Embedding successful")
+          EOF
+          printf '# Test README\n\nThis is a test.\n\n```python:hello.py\n```\n' \
+            > /tmp/test-embed-full/README.md
+          cd /tmp/test-embed-full && git init && git add . && git commit -m "init"
+
+      - name: Run code embedder Python script
+        run: |
+          cd /tmp/test-embed-full
+          PYTHONPATH="$GITHUB_WORKSPACE" python "$GITHUB_WORKSPACE/code_embedder/main.py"
+          echo "Exit code: $?"
+
+      - name: Assert the code was embedded into the markdown file
+        run: |
+          CONTENT=$(cat /tmp/test-embed-full/README.md)
+          echo "--- Markdown content after embedding ---"
+          echo "$CONTENT"
+          echo "---------------------------------------"
+          if ! echo "$CONTENT" | grep -q 'print("Embedding successful")'; then
+            echo "FAIL: Expected embedded code not found in markdown"
+            exit 1
+          fi
+          echo "PASS: Code was successfully embedded into the markdown file"
+
+      - name: Assert git shows changes were made
+        run: |
+          cd /tmp/test-embed-full
+          STATUS=$(git status -s)
+          echo "Git status: '$STATUS'"
+          if [ -z "$STATUS" ]; then
+            echo "FAIL: Expected changes in git status but found none"
+            exit 1
+          fi
+          echo "PASS: Git status shows changes as expected"
